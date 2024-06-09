@@ -13,11 +13,18 @@ Neural networks have been used to solve a wide variety of tasks, such as compute
 
 Context Problem
 
-El entrenamiento en PyTorch requiere que el desarrollador programe manualmente el bucle de entrenamiento. Durante cada iteración del bucle de entrenamiento (épocas), se siguen estos pasos:
-•	Cargar subconjuntos de datos de entrenamiento (batch).
-•	Reiniciar los gradientes a cero.
-•	Realizar la propagación hacia adelante (forward propagation) para obtener predicciones.
-•	Calcular la pérdida (loss) utilizando la función de pérdida.
-•	Realizar la propagación hacia atrás (backward propagation) para calcular los gradientes.
-•	Actualizar los pesos del modelo mediante el optimizador.
-Este proceso se repite para cada batch de datos y se monitoriza la pérdida acumulada para evaluar el progreso del entrenamiento.
+Today's companies are increasingly needing to increase their computational resources in order to be competitive in a highly technological marketplace.
+in order to be competitive in a highly technological marketplace. As a result, the popularity of neural networks with Python is growing. Because the agility that
+Python and the data processing power of ANNs make both elements together the most effective and efficient option for high-performance companies. In addition, neural networks and their subfield, deep learning, have achieved impressive results in areas such as robotics, robotic
+impressive results in areas such as robotics, computer vision, Natural Language Processing (NLP) and Natural Language Understanding (NLU).
+
+Methodology
+
+1.	Tensorflow.Keras (tf.keras)
+
+Keras is an open source Neural Networks library written in Python capable of running on top of TensorFlow, developed and maintained by François Chollet 2, a Google engineer. 
+
+Model Definition
+
+En tf.keras, se puede crear un modelo secuencial definiendo una serie de capas, que incluyen una capa de entrada, capas intermedias (ocultas) y una capa de salida. Por ejemplo, un modelo secuencial puede ser definido con una capa de entrada que recibe 500 parámetros, una capa oculta de 256.
+
