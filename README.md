@@ -20,7 +20,7 @@ impressive results in areas such as robotics, computer vision, Natural Language 
 
 Methodology
 
-1.	Tensorflow.Keras (tf.keras)
+Tensorflow.Keras (tf.keras)
 
 Keras is an open source Neural Networks library written in Python capable of running on top of TensorFlow, developed and maintained by François Chollet 2, a Google engineer. 
 
