@@ -380,3 +380,112 @@ def adapt_model_fit(root_node, model_names):
     check('model.fit()', adapted, found)
     adapted, found = adapt_model_fit_generator_recursive(body, False, model_names)
     check('model.fit_generator()', adapted, found)
+def adapt_model_save(root_node, model_names):
+
+    def adapt_model_save_recursive(body, adapted, model_names):
+        found = False
+        for idx1, elem in enumerate(body):
+            try:
+                # print(au.dump(elem))
+                if classname(elem) == 'expr' and \
+                    elem.value.func.attr in ['save', 'save_weights'] and \
+                        (elem.value.func.value.id in model_names or 'model' in elem.value.func.value.id):
+                    found = True
+                    node = copy(hvdconfig.if_rank_0)
+                    node.body = [elem]
+                    body[idx1] = node
+                    adapted = True
+                else:
+                    for body2 in get_body_nodes(elem):
+                        adapted, found2 = adapt_model_save_recursive(body2, adapted, model_names)
+                        found = found or found2
+            except AttributeError:
+                pass
+        return adapted, found
+
+    body = get_body_nodes(root_node)[0]
+    adapted, found = adapt_model_save_recursive(body, False, model_names)
+    if not adapted and VERBOSE:
+        print("Could not adapt model.save() function!")
+        if not found:
+            print("    --Function not found--")
+
+def remove_block_comments(root_node):
+
+    def remove_block_comments_recursive(body):
+        sub_index_list = []
+        for idx1, elem in enumerate(body):
+            try:
+                if classname(elem) == 'expr' and classname(elem.value) == 'str':
+                    sub_index_list.append(idx1)
+                elif not classname(elem) == 'assign':
+                    for body2 in get_body_nodes(elem):
+                        remove_block_comments_recursive(body2)
+            except AttributeError:
+                pass
+        for i in reversed(sub_index_list):
+            del body[i]
+
+    remove_block_comments_recursive(get_body_nodes(root_node)[0])
+
+def add_auxiliar_functions(root_node, index):
+    body = getattr(root_node, 'body')
+    for aux_func in hvdconfig.aux_funcs:
+        body.insert(index, aux_func)
+
+def add_necessary_imports(node):
+    last_idx = 0
+    for imp in hvdconfig.imports:
+        idx = add_import(node, imp)
+        if idx > last_idx:
+            last_idx = idx
+    return last_idx
+
+def horovodize(framework, path, v):
+    time_ini = time.time()
+    global VERBOSE
+    VERBOSE = v
+    # filename of horovod code
+    name = f"hvd_{ntpath.basename(path)}"
+
+    # Obtain AST from original code
+    node = parse_code(filename=path, save_to_file=True)
+
+    # Find wrappers: "class CustomModel(Sequential)"
+    possible_names = find_wrappers(node)
+
+    # Find model names first
+    model_names = find_model_names(node, possible_names)
+    if len(model_names) == 0:
+        print("No models found! Aborting...")
+        return
+
+    # Remove block comments or docstrings
+    remove_block_comments(node)
+    print("✓ Removed unnecesary comments")
+
+    # Add necessary imports
+    last_idx = add_necessary_imports(node)
+    print("✓ Added imports")
+
+    # Add horovod config for tf1 or tf2
+    add_horovod_initialization(framework, node, last_idx)
+    print("✓ Added Horovod init")
+
+    # Add auxiliar functions used by horovod
+    add_auxiliar_functions(node, last_idx)
+    print("✓ Added auxiliar functions")
+
+    # Adapt existing code
+    adapt_model_compile(node, model_names)
+    adapt_model_fit(node, model_names)
+    adapt_model_save(node, model_names)
+    adapt_model_evaluate_and_predict(node, model_names)
+    print("✓ Code completely adapted")
+
+    # Generate new python code
+    filename = generate_horovodized_code(root_node=node, filename=name)
+    time_end = time.time()
+    print(f"✓ File generated: {filename}")
+    if VERBOSE or True:
+        print(f"Compilation time: {round(time_end-time_ini, 2)} seconds")
