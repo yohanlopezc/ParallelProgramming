@@ -97,9 +97,9 @@ def add_horovod_initialization(framework, root_node, idx):
 
     body = get_body_nodes(root_node)[0]
     if framework == 'tf1':
-        return add_code(body, idx, copy(hvdconfig.configs_tf1))
+        return add_code(body, idx, copy(config.configs_tf1))
     else:
-        return add_code(body, idx, copy(hvdconfig.configs_tf2))
+        return add_code(body, idx, copy(config.configs_tf2))
 
 def gen_aux_fn(root_node, idx, code):
     body = get_body_nodes(root_node)[0]
@@ -123,7 +123,7 @@ def find_wrappers(root_node):
             except AttributeError:
                 pass
 
-    possible_names = copy(hvdconfig.possible_model_names_keras)
+    possible_names = copy(config.possible_model_names_keras)
     body = get_body_nodes(root_node)[0]
     find_wrappers_recursive(body, possible_names)
     return possible_names
@@ -131,7 +131,7 @@ def find_wrappers(root_node):
 def find_model_names(root_node, possible_names):
 
     def find_model_names_recursive(body, model_names):
-        # possible_names = copy(hvdconfig.possible_model_names_keras)
+        # possible_names = copy(config.possible_model_names_keras)
         for elem in body:
             try:
                 if classname(elem) == 'assign':
@@ -179,12 +179,12 @@ def adapt_model_compile(root_node, model_names):
             for i, kw in enumerate(keywords):
                 if kw.arg == 'optimizer':
                     found = True
-                    opt_keyword = copy(hvdconfig.optimizer_keyword)
+                    opt_keyword = copy(config.optimizer_keyword)
                     opt_keyword.value.args = [kw.value]
                     keywords[i] = opt_keyword
                     break
             if not found:
-                opt_arg = copy(hvdconfig.optimizer_arg)
+                opt_arg = copy(config.optimizer_arg)
                 opt_arg.args = [args[0]]
                 args[0] = opt_arg
 
@@ -221,7 +221,7 @@ def adapt_model_evaluate_and_predict(root_node, model_names):
                     elem.value.func.attr in ['evaluate', 'predict'] and \
                         (elem.value.func.value.id in model_names or 'model' in elem.value.func.value.id):
                     found = True
-                    node = copy(hvdconfig.if_rank_0)
+                    node = copy(config.if_rank_0)
                     elems = []
                     if classname(elem) == 'assign':
                         var_names = []
@@ -260,25 +260,25 @@ def adapt_model_fit(root_node, model_names):
 
             for idx, kw in enumerate(keywords):
                 if kw.arg == 'epochs' and not adapted_epochs:
-                    epochs_keyword = copy(hvdconfig.epochs_keyword)
+                    epochs_keyword = copy(config.epochs_keyword)
                     epochs_keyword.value.args = [kw.value]
                     keywords[idx] = epochs_keyword
                     adapted_epochs = True
                 if kw.arg == 'callbacks' and not adapted_callbacks:
                     # cb_keyword.value.args[0].id = kw.value
-                    cb_keyword = copy(hvdconfig.callbacks_keyword)
+                    cb_keyword = copy(config.callbacks_keyword)
                     cb_keyword.value.args[0] = kw.value
                     keywords[idx] = cb_keyword
                     adapted_callbacks = True
                 if kw.arg == 'verbose' and not adapted_verbose:
-                    keywords[idx] = copy(hvdconfig.verbose_keyword)
+                    keywords[idx] = copy(config.verbose_keyword)
                     adapted_verbose = True
 
             if not adapted_callbacks:
-                keywords.append(copy(hvdconfig.callbacks_keyword))
+                keywords.append(copy(config.callbacks_keyword))
                 adapted_callbacks = True
             if not adapted_verbose:
-                keywords.append(copy(hvdconfig.verbose_keyword))
+                keywords.append(copy(config.verbose_keyword))
                 adapted_verbose = True
 
             return adapted_epochs and adapted_verbose and adapted_callbacks
@@ -314,35 +314,35 @@ def adapt_model_fit(root_node, model_names):
 
             for idx, kw in enumerate(keywords):
                 if kw.arg == 'epochs' and not adapted_epochs:
-                    epochs_keyword = copy(hvdconfig.epochs_keyword)
+                    epochs_keyword = copy(config.epochs_keyword)
                     epochs_keyword.value.args = [kw.value]
                     keywords[idx] = epochs_keyword
                     adapted_epochs = True
                 if kw.arg == 'steps_per_epoch' and not adapted_steps_per_epoch:
-                    spe_keyword = copy(hvdconfig.steps_per_epoch_keyword)
+                    spe_keyword = copy(config.steps_per_epoch_keyword)
                     spe_keyword.value.args = [kw.value]
                     keywords[idx] = spe_keyword
                     adapted_steps_per_epoch = True
                 if kw.arg == 'validation_steps' and not adapted_validation_steps:
-                    vs_keyword = copy(hvdconfig.validation_steps_keyword)
+                    vs_keyword = copy(config.validation_steps_keyword)
                     vs_keyword.value.args = [kw.value]
                     keywords[idx] = vs_keyword
                     adapted_validation_steps = True
                 if kw.arg == 'callbacks' and not adapted_callbacks:
                     # cb_keyword.value.args[0].id = kw.value
-                    cb_keyword = copy(hvdconfig.callbacks_keyword)
+                    cb_keyword = copy(config.callbacks_keyword)
                     cb_keyword.value.args[0] = kw.value
                     keywords[idx] = cb_keyword
                     adapted_callbacks = True
                 if kw.arg == 'verbose' and not adapted_verbose:
-                    keywords[idx] = copy(hvdconfig.verbose_keyword)
+                    keywords[idx] = copy(config.verbose_keyword)
                     adapted_verbose = True
 
             if not adapted_callbacks:
-                keywords.append(copy(hvdconfig.callbacks_keyword))
+                keywords.append(copy(config.callbacks_keyword))
                 adapted_callbacks = True
             if not adapted_verbose:
-                keywords.append(copy(hvdconfig.verbose_keyword))
+                keywords.append(copy(config.verbose_keyword))
                 adapted_verbose = True
 
             adapted = adapted_callbacks and adapted_verbose and \
@@ -391,7 +391,7 @@ def adapt_model_save(root_node, model_names):
                     elem.value.func.attr in ['save', 'save_weights'] and \
                         (elem.value.func.value.id in model_names or 'model' in elem.value.func.value.id):
                     found = True
-                    node = copy(hvdconfig.if_rank_0)
+                    node = copy(config.if_rank_0)
                     node.body = [elem]
                     body[idx1] = node
                     adapted = True
@@ -430,12 +430,12 @@ def remove_block_comments(root_node):
 
 def add_auxiliar_functions(root_node, index):
     body = getattr(root_node, 'body')
-    for aux_func in hvdconfig.aux_funcs:
+    for aux_func in config.aux_funcs:
         body.insert(index, aux_func)
 
 def add_necessary_imports(node):
     last_idx = 0
-    for imp in hvdconfig.imports:
+    for imp in config.imports:
         idx = add_import(node, imp)
         if idx > last_idx:
             last_idx = idx
