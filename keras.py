@@ -210,3 +210,173 @@ def adapt_model_compile(root_node, model_names):
         print("Could not adapt model.compile() function!")
         if not found:
             print("    --Function not found--")
+
+def adapt_model_evaluate_and_predict(root_node, model_names):
+
+    def adapt_model_evaluate_and_predict_recursive(body, adapted, model_names):
+        found = False
+        for idx1, elem in enumerate(body):
+            try:
+                if classname(elem) in ['expr', 'assign', 'return'] and \
+                    elem.value.func.attr in ['evaluate', 'predict'] and \
+                        (elem.value.func.value.id in model_names or 'model' in elem.value.func.value.id):
+                    found = True
+                    node = copy(hvdconfig.if_rank_0)
+                    elems = []
+                    if classname(elem) == 'assign':
+                        var_names = []
+                        targets = elem.targets
+                        if classname(targets[0]) == 'tuple':
+                            for target in targets[0].elts:
+                                var_names.append(target.id)
+                        elif classname(targets) == 'list':
+                            var_names.append(targets[0].id)
+                        elems = find_variables_in_code(var_names, body, idx1)
+                    node.body = [elem] + elems
+                    body[idx1] = node
+                    adapted = True
+                else:
+                    for body2 in get_body_nodes(elem):
+                        adapted, found2 = adapt_model_evaluate_and_predict_recursive(body2, adapted, model_names)
+                        found = found or found2
+            except AttributeError:
+                pass
+        return adapted, found
+
+    body = get_body_nodes(root_node)[0]
+    adapted, found = adapt_model_evaluate_and_predict_recursive(body, False, model_names)
+    if not adapted and VERBOSE:
+        print("Could not adapt model.evaluate()/model.predict() function!")
+        if not found:
+            print("    --Function not found--")
+
+def adapt_model_fit(root_node, model_names):
+
+    def adapt_model_fit_recursive(body, adapted, model_names):
+
+        def adapt_keywords_model_fit(keywords):
+
+            adapted_callbacks = adapted_epochs = adapted_verbose = False
+
+            for idx, kw in enumerate(keywords):
+                if kw.arg == 'epochs' and not adapted_epochs:
+                    epochs_keyword = copy(hvdconfig.epochs_keyword)
+                    epochs_keyword.value.args = [kw.value]
+                    keywords[idx] = epochs_keyword
+                    adapted_epochs = True
+                if kw.arg == 'callbacks' and not adapted_callbacks:
+                    # cb_keyword.value.args[0].id = kw.value
+                    cb_keyword = copy(hvdconfig.callbacks_keyword)
+                    cb_keyword.value.args[0] = kw.value
+                    keywords[idx] = cb_keyword
+                    adapted_callbacks = True
+                if kw.arg == 'verbose' and not adapted_verbose:
+                    keywords[idx] = copy(hvdconfig.verbose_keyword)
+                    adapted_verbose = True
+
+            if not adapted_callbacks:
+                keywords.append(copy(hvdconfig.callbacks_keyword))
+                adapted_callbacks = True
+            if not adapted_verbose:
+                keywords.append(copy(hvdconfig.verbose_keyword))
+                adapted_verbose = True
+
+            return adapted_epochs and adapted_verbose and adapted_callbacks
+
+        found = False
+        for idx1, elem in enumerate(body):
+            try:
+                if classname(elem) in ['expr', 'assign', 'return'] and elem.value.func.attr == 'fit' \
+                    and (elem.value.func.value.id in model_names or 'model' in elem.value.func.value.id):
+                    found = True
+                    adapted = adapt_keywords_model_fit(elem.value.keywords)
+                elif classname(elem) == 'call' and elem.func.attr == 'fit' and \
+                    (elem.func.value.id in model_names or 'model' in elem.func.value.id):
+                    found = True
+                    adapted = adapt_keywords_model_fit(elem.keywords)
+                else:
+                    try:
+                        for body2 in get_body_nodes(elem):
+                            adapted, found2 = adapt_model_fit_recursive(body2, adapted, model_names)
+                            found = found or found2
+                    except RootNodeException:
+                        pass
+            except AttributeError:
+                pass
+        return adapted, found
+
+    def adapt_model_fit_generator_recursive(body, adapted, model_names):
+
+        def adapt_keywords_model_fit_generator(keywords):
+
+            adapted_steps_per_epoch = adapted_validation_steps = False
+            adapted_callbacks = adapted_verbose = adapted_epochs = False
+
+            for idx, kw in enumerate(keywords):
+                if kw.arg == 'epochs' and not adapted_epochs:
+                    epochs_keyword = copy(hvdconfig.epochs_keyword)
+                    epochs_keyword.value.args = [kw.value]
+                    keywords[idx] = epochs_keyword
+                    adapted_epochs = True
+                if kw.arg == 'steps_per_epoch' and not adapted_steps_per_epoch:
+                    spe_keyword = copy(hvdconfig.steps_per_epoch_keyword)
+                    spe_keyword.value.args = [kw.value]
+                    keywords[idx] = spe_keyword
+                    adapted_steps_per_epoch = True
+                if kw.arg == 'validation_steps' and not adapted_validation_steps:
+                    vs_keyword = copy(hvdconfig.validation_steps_keyword)
+                    vs_keyword.value.args = [kw.value]
+                    keywords[idx] = vs_keyword
+                    adapted_validation_steps = True
+                if kw.arg == 'callbacks' and not adapted_callbacks:
+                    # cb_keyword.value.args[0].id = kw.value
+                    cb_keyword = copy(hvdconfig.callbacks_keyword)
+                    cb_keyword.value.args[0] = kw.value
+                    keywords[idx] = cb_keyword
+                    adapted_callbacks = True
+                if kw.arg == 'verbose' and not adapted_verbose:
+                    keywords[idx] = copy(hvdconfig.verbose_keyword)
+                    adapted_verbose = True
+
+            if not adapted_callbacks:
+                keywords.append(copy(hvdconfig.callbacks_keyword))
+                adapted_callbacks = True
+            if not adapted_verbose:
+                keywords.append(copy(hvdconfig.verbose_keyword))
+                adapted_verbose = True
+
+            adapted = adapted_callbacks and adapted_verbose and \
+                        adapted_validation_steps and (adapted_steps_per_epoch or adapted_epochs)
+
+            return adapted
+
+        found = False
+        for idx1, elem in enumerate(body):
+            try:
+                if classname(elem) in ['expr', 'assign', 'return'] and elem.value.func.attr == 'fit_generator' \
+                    and (elem.value.func.value.id in model_names or 'model' in elem.value.func.value.id):
+                    found = True
+                    adapted = adapt_keywords_model_fit_generator(elem.value.keywords)
+                elif classname(elem) == 'call' and elem.func.attr == 'fit_generator' and elem.func.value.id == model_name:
+                    found = True
+                    adapted = adapt_keywords_model_fit_generator(elem.keywords)
+                else:
+                    for body2 in get_body_nodes(elem):
+                        adapted, found2 = adapt_model_fit_generator_recursive(body2, adapted, model_names)
+                        found = found or found2
+            except AttributeError:
+                pass
+        return adapted, found
+
+    def check(name, adapted, found):
+        if not adapted:
+            if VERBOSE:
+                print("Could not adapt " + name + " function!")
+                if not found:
+                    print("    --Function not found--")
+
+    body = get_body_nodes(root_node)[0]
+    adapted, found = adapt_model_fit_recursive(body, False, model_names)
+    check('model.fit()', adapted, found)
+    adapted, found = adapt_model_fit_generator_recursive(body, False, model_names)
+    check('model.fit_generator()', adapted, found)
