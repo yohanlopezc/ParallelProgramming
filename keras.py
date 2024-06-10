@@ -151,3 +151,62 @@ def find_model_names(root_node, possible_names):
     body = get_body_nodes(root_node)[0]
     find_model_names_recursive(body, model_names)
     return model_names
+
+def find_names_in_code(code):
+    return [x for id, x in enumerate(code.split('\'')) if id%2 == 1]
+
+def find_variables_in_code(var_names, body, idx1):
+    elems = []
+    idxs = []
+    for idx, el in enumerate(body):
+        if idx > idx1:
+            names = find_names_in_code(au.dump(el))
+            for n in var_names:
+                if n in names:
+                    elems.append(el)
+                    names = []
+                    idxs.append(idx)
+    for i in reversed(idxs):
+        del body[i]
+    return elems
+
+def adapt_model_compile(root_node, model_names):
+
+    def adapt_model_compile_recursive(body, adapted, model_names):
+
+        def adapt_keywords_model_compile(keywords, args):
+            found = False
+            for i, kw in enumerate(keywords):
+                if kw.arg == 'optimizer':
+                    found = True
+                    opt_keyword = copy(hvdconfig.optimizer_keyword)
+                    opt_keyword.value.args = [kw.value]
+                    keywords[i] = opt_keyword
+                    break
+            if not found:
+                opt_arg = copy(hvdconfig.optimizer_arg)
+                opt_arg.args = [args[0]]
+                args[0] = opt_arg
+
+        found = False
+        for elem in body:
+            try:
+                if classname(elem) in ['expr', 'return'] and elem.value.func.attr == 'compile' \
+                    and (elem.value.func.value.id in model_names or 'model' in elem.value.func.value.id):
+                    found = True
+                    adapt_keywords_model_compile(elem.value.keywords, elem.value.args)
+                    adapted = True
+                else:
+                    for body2 in get_body_nodes(elem):
+                        adapted, found2 = adapt_model_compile_recursive(body2, adapted, model_names)
+                        found = found or found2
+            except AttributeError:
+                pass
+
+        return adapted, found
+
+    adapted, found = adapt_model_compile_recursive(get_body_nodes(root_node)[0], False, model_names)
+    if not adapted and VERBOSE:
+        print("Could not adapt model.compile() function!")
+        if not found:
+            print("    --Function not found--")
